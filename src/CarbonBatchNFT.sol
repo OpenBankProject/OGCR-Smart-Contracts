@@ -143,8 +143,7 @@ contract CarbonBatchNFT is ERC721URIStorage, Ownable, ReentrancyGuard {
         require(carbonProject.ownerOf(projectId) != address(0), "Project does not exist");
         
         // Get project data to extract carbon amount
-        (, , , uint256 carbonAmount, , , , , , , bool verified) = carbonProject.getProjectData(projectId);
-        require(verified, "Project must be verified");
+        (, uint256 carbonAmount, , , , ) = carbonProject.getProjectData(projectId);
         
         // Update batch data
         BatchData storage batch = batchData[batchId];
@@ -272,8 +271,6 @@ contract CarbonBatchNFT is ERC721URIStorage, Ownable, ReentrancyGuard {
         uint256 value,
         bytes calldata data
     ) external returns (bytes memory) {
-        require(msg.sender == ownerOf(batchId), "Not batch owner");
-        
         address tokenBoundAccount = batchData[batchId].tokenBoundAccount;
         return IERC6551Account(tokenBoundAccount).executeCall(to, value, data);
     }

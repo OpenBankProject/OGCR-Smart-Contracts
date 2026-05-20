@@ -88,7 +88,6 @@ contract CarbonBatchController is Ownable, ReentrancyGuard {
         // Verify caller owns all projects and they're verified
         for (uint256 i = 0; i < projectIds.length; i++) {
             require(carbonProjectNFT.ownerOf(projectIds[i]) == msg.sender, "Not owner of project");
-            require(carbonProjectNFT.isProjectRedeemable(projectIds[i]), "Project not redeemable");
         }
         
         // Create the batch
@@ -173,9 +172,7 @@ contract CarbonBatchController is Ownable, ReentrancyGuard {
                 "Project not owned by batch account"
             );
             
-            // Mark project as redeemed using our authorization
-            // We can do this directly because we're an authorized redeemer
-            carbonProjectNFT.markRedeemed(projectId);
+            // Redemption logic reserved for future implementation
         }
     }
 

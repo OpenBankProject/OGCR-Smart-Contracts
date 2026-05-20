@@ -70,9 +70,6 @@ contract DeployCarbonERC6551System is Script {
         carbonBatchNFT.transferOwnership(address(batchController));
         console.log("CarbonBatchNFT ownership transferred to CarbonBatchController");
 
-        // Allow the batch controller to mark projects as redeemed
-        carbonProjectNFT.setAuthorizedRedeemer(address(batchController), true);
-        console.log("CarbonBatchController authorized as redeemer for CarbonProjectNFT");
 
         vm.stopBroadcast();
 
