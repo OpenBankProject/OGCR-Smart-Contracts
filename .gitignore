@@ -1,1 +1,7 @@
 .env
+
+# IDE
+.idea/
+.vscode/
+
+broadcast/
