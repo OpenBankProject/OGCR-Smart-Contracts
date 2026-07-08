@@ -412,6 +412,26 @@ contract OGCRTokenSystemTest is Test {
         batchNFT.getBatch(999);
     }
 
+    function testBatchDuplicatePrevented() public {
+        uint256 activityTokenId = _mintActivity();
+        _mintBatch(activityTokenId);
+        vm.prank(minter);
+        vm.expectRevert("CarbonCreditBatchNFT: batch already minted");
+        batchNFT.mint(user1, activityTokenId, "permanent_carbon_tonnes",
+            ACTIVITY_URL, ACTIVITY_HASH, "", "", CERT_URL, CERT_HASH, "", "", "", "");
+    }
+
+    function testBatchKeyLookup() public {
+        uint256 activityTokenId = _mintActivity();
+        (uint256 tokenId,) = _mintBatch(activityTokenId);
+        assertEq(batchNFT.getTokenIdByBatchKey(activityTokenId, "permanent_carbon_tonnes"), tokenId);
+    }
+
+    function testBatchKeyLookupNotFoundReverts() public {
+        vm.expectRevert("CarbonCreditBatchNFT: batch not found");
+        batchNFT.getTokenIdByBatchKey(999, "permanent_removal");
+    }
+
     // ─── CarbonCredit ─────────────────────────────────────────────────────────
 
     function testCarbonCreditMintIntoTBA() public {

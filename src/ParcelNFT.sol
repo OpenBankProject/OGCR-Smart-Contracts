@@ -1,97 +1,120 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
 
-contract ParcelNFT is ERC721URIStorage, Ownable, ReentrancyGuard {
+contract ParcelNFT is ERC721, Ownable {
 
     struct ParcelData {
-        string parcelId;                    // Business PK (e.g. "DE-BY-123456")
-        string multipolygonCoordinates;     // GeoJSON MultiPolygon string
-        string coordinateReferenceSystem;   // e.g. "EPSG:4326"
-        string iacsCodes;                   // IACS parcel codes (comma-separated)
-        string lpisCodes;                   // LPIS parcel codes (comma-separated)
-        uint256 mintedAt;
+        string parcel_id;
+        string parcel_uri;      // HTTPS API link to the parcel resource
+        string parcel_hash;     // integrity hash of the API response
     }
 
     uint256 public nextId = 1;
-    mapping(uint256 => ParcelData) public parcelData;
+    address public minter;
 
-    // parcelId string → token ID (enforces uniqueness of business PK)
+    mapping(uint256 => ParcelData) public parcels;
     mapping(string => uint256) public tokenIdByParcelId;
 
     event ParcelMinted(
         uint256 indexed tokenId,
-        address indexed owner,
-        string parcelId,
-        string coordinateReferenceSystem
+        address indexed to,
+        string parcel_id
     );
 
-    constructor() ERC721("Geographic Parcel", "PARCEL") {}
+    event MinterUpdated(address indexed oldMinter, address indexed newMinter);
 
-    function mintParcel(
+    modifier onlyMinter() {
+        require(msg.sender == minter, "ParcelNFT: caller is not minter");
+        _;
+    }
+
+    constructor(address _minter) ERC721("Geographic Parcel", "PARCEL") {
+        require(_minter != address(0), "ParcelNFT: zero minter");
+        minter = _minter;
+        emit MinterUpdated(address(0), _minter);
+    }
+
+    function setMinter(address _minter) external onlyOwner {
+        require(_minter != address(0), "ParcelNFT: zero address");
+        emit MinterUpdated(minter, _minter);
+        minter = _minter;
+    }
+
+    function mint(
         address to,
-        string calldata parcelId,
-        string calldata multipolygonCoordinates,
-        string calldata coordinateReferenceSystem,
-        string calldata iacsCodes,
-        string calldata lpisCodes,
-        string calldata uri
-    ) external onlyOwner nonReentrant returns (uint256 tokenId) {
-        require(to != address(0), "Cannot mint to zero address");
-        require(bytes(parcelId).length > 0, "Parcel ID required");
-        require(tokenIdByParcelId[parcelId] == 0, "Parcel ID already minted");
-        require(bytes(coordinateReferenceSystem).length > 0, "CRS required");
+        string calldata parcel_id,
+        string calldata parcel_uri,
+        string calldata parcel_hash
+    ) external onlyMinter returns (uint256 tokenId) {
+        require(to != address(0), "ParcelNFT: zero address");
+        require(bytes(parcel_id).length > 0, "ParcelNFT: parcel_id required");
+        require(tokenIdByParcelId[parcel_id] == 0, "ParcelNFT: already minted");
 
         tokenId = nextId++;
 
         _mint(to, tokenId);
-        _setTokenURI(tokenId, uri);
 
-        parcelData[tokenId] = ParcelData({
-            parcelId: parcelId,
-            multipolygonCoordinates: multipolygonCoordinates,
-            coordinateReferenceSystem: coordinateReferenceSystem,
-            iacsCodes: iacsCodes,
-            lpisCodes: lpisCodes,
-            mintedAt: block.timestamp
+        parcels[tokenId] = ParcelData({
+            parcel_id: parcel_id,
+            parcel_uri: parcel_uri,
+            parcel_hash: parcel_hash
         });
 
-        tokenIdByParcelId[parcelId] = tokenId;
+        tokenIdByParcelId[parcel_id] = tokenId;
 
-        emit ParcelMinted(tokenId, to, parcelId, coordinateReferenceSystem);
+        emit ParcelMinted(tokenId, to, parcel_id);
     }
 
-    function getParcelData(uint256 tokenId) external view returns (
-        string memory parcelId,
-        string memory multipolygonCoordinates,
-        string memory coordinateReferenceSystem,
-        string memory iacsCodes,
-        string memory lpisCodes,
-        uint256 mintedAt
-    ) {
-        require(_exists(tokenId), "Parcel does not exist");
-        ParcelData memory p = parcelData[tokenId];
-        return (
-            p.parcelId,
-            p.multipolygonCoordinates,
-            p.coordinateReferenceSystem,
-            p.iacsCodes,
-            p.lpisCodes,
-            p.mintedAt
-        );
+    function getParcel(uint256 tokenId) external view returns (ParcelData memory) {
+        require(_exists(tokenId), "ParcelNFT: token does not exist");
+        return parcels[tokenId];
     }
 
-    function getTokenIdByParcelId(string calldata parcelId) external view returns (uint256) {
-        uint256 tokenId = tokenIdByParcelId[parcelId];
-        require(tokenId != 0, "Parcel ID not found");
+    function getTokenIdByParcelId(string calldata parcel_id) external view returns (uint256) {
+        uint256 tokenId = tokenIdByParcelId[parcel_id];
+        require(tokenId != 0, "ParcelNFT: parcel_id not found");
         return tokenId;
     }
 
-    function setTokenURI(uint256 tokenId, string calldata uri) external onlyOwner {
-        require(_exists(tokenId), "Parcel does not exist");
-        _setTokenURI(tokenId, uri);
+    /// @notice On-chain ERC-721 metadata rendered from the stored ParcelData.
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        require(_exists(tokenId), "ParcelNFT: token does not exist");
+        ParcelData memory p = parcels[tokenId];
+
+        bytes memory json = abi.encodePacked(
+            '{"name":"Geographic Parcel ', _esc(p.parcel_id), '",',
+            '"description":"OGCR geographic parcel token.",',
+            '"attributes":[',
+                '{"trait_type":"Parcel ID","value":"',   _esc(p.parcel_id),   '"},',
+                '{"trait_type":"Parcel URL","value":"',  _esc(p.parcel_uri),  '"},',
+                '{"trait_type":"Parcel Hash","value":"', _esc(p.parcel_hash), '"}',
+            ']}'
+        );
+
+        return string(abi.encodePacked(
+            "data:application/json;base64,", Base64.encode(json)
+        ));
+    }
+
+    /// @dev Minimal JSON-string escaper: escapes `"` and `\` in free-text values.
+    function _esc(string memory s) internal pure returns (string memory) {
+        bytes memory b = bytes(s);
+        bytes memory out = new bytes(b.length * 2);
+        uint256 j = 0;
+        for (uint256 i = 0; i < b.length; i++) {
+            bytes1 c = b[i];
+            if (c == '"' || c == "\\") {
+                out[j++] = "\\";
+            }
+            out[j++] = c;
+        }
+        assembly ("memory-safe") {
+            mstore(out, j)
+        }
+        return string(out);
     }
 }

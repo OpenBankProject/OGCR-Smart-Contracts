@@ -13,7 +13,8 @@ contract DeployParcelNFT is Script {
         console.log("Balance: ", deployer.balance);
 
         vm.startBroadcast(deployerPrivateKey);
-        ParcelNFT parcelNFT = new ParcelNFT();
+        // Deployer is the initial minter; call setMinter() once the tokenizer is live.
+        ParcelNFT parcelNFT = new ParcelNFT(deployer);
         vm.stopBroadcast();
 
         console.log("ParcelNFT deployed at:", address(parcelNFT));
