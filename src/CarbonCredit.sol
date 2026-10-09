@@ -8,6 +8,11 @@ contract CarbonCredit is ERC20, Ownable {
 
     address public minter;
 
+    // Cumulative amount ever minted to an address. Unlike balanceOf it does not
+    // drop when credits are moved or burned, so the tokenizer can tell whether a
+    // batch's token-bound account has already been funded.
+    mapping(address => uint256) public mintedTo;
+
     event MinterUpdated(address indexed oldMinter, address indexed newMinter);
 
     modifier onlyMinter() {
@@ -29,6 +34,7 @@ contract CarbonCredit is ERC20, Ownable {
 
     function mint(address to, uint256 amount) external onlyMinter {
         require(to != address(0), "CarbonCredit: zero address");
+        mintedTo[to] += amount;
         _mint(to, amount);
     }
 

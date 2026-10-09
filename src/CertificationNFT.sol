@@ -6,33 +6,53 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
+/// @notice One token per certificate of compliance. A re-certification is a new
+/// certificate_of_compliance record and therefore a new token for the same activity.
 contract CertificationNFT is ERC721, Ownable {
 
     struct CertificationData {
+        string certificate_of_compliance_id;
+        string certificate_of_compliance_uri;
+        string certificate_of_compliance_hash;
+        string activity_id;
         uint256 activity_nft_id;
-        string certification_scheme_id;
-        string certification_body_id;
-        string certification_of_compliance_id;
+        string activity_uri;
+        string activity_hash;
+        string activity_name;
+        string certification_scheme_name;
+        string certification_scheme_uri;
+        string certification_scheme_hash;
+        string certification_body_name;
+        string certification_body_uri;
+        string certification_body_hash;
+        string country_id;
         string issue_date;
         string expiry_date;
+        string audit_report_uri;
+        string audit_report_hash;
+        // Quantities are decimal strings exactly as recorded on the certificate
+        // (tonnes CO2e). Empty means the certificate carries no value for it.
+        string carbon_removals_under_baseline;
+        string soil_emissions_under_baseline;
+        string permanent_net_carbon_removal_benefit;
+        string carbon_farming_temporary_net_carbon_removal_benefit;
+        string carbon_farming_net_soil_emission_reduction_benefit;
+        string carbon_storage_temporary_net_carbon_removal_benefit;
+        string unit_types;
         string certification_status;
-        string activity_url;
-        string activity_hash;
-        string certification_url;
-        string certification_hash;
     }
 
     uint256 public nextId = 1;
     address public minter;
 
-    mapping(uint256 => CertificationData) public certifications;
+    mapping(uint256 => CertificationData) private certifications;
     mapping(string => uint256) public tokenIdByComplianceId;
 
     event CertificationMinted(
         uint256 indexed tokenId,
         address indexed to,
         uint256 indexed activity_nft_id,
-        string certification_of_compliance_id
+        string certificate_of_compliance_id
     );
 
     event MinterUpdated(address indexed oldMinter, address indexed newMinter);
@@ -54,46 +74,20 @@ contract CertificationNFT is ERC721, Ownable {
         minter = _minter;
     }
 
-    function mint(
-        address to,
-        uint256 activity_nft_id,
-        string calldata certification_scheme_id,
-        string calldata certification_body_id,
-        string calldata certification_of_compliance_id,
-        string calldata issue_date,
-        string calldata expiry_date,
-        string calldata certification_status,
-        string calldata activity_url,
-        string calldata activity_hash,
-        string calldata certification_url,
-        string calldata certification_hash
-    ) external onlyMinter returns (uint256 tokenId) {
+    function mint(address to, CertificationData calldata data) external onlyMinter returns (uint256 tokenId) {
         require(to != address(0), "CertificationNFT: zero address");
-        require(bytes(certification_of_compliance_id).length > 0, "CertificationNFT: compliance id required");
-        require(activity_nft_id > 0, "CertificationNFT: activity_nft_id required");
-        require(tokenIdByComplianceId[certification_of_compliance_id] == 0, "CertificationNFT: already minted");
+        require(bytes(data.certificate_of_compliance_id).length > 0, "CertificationNFT: compliance id required");
+        require(data.activity_nft_id > 0, "CertificationNFT: activity_nft_id required");
+        require(tokenIdByComplianceId[data.certificate_of_compliance_id] == 0, "CertificationNFT: already minted");
 
         tokenId = nextId++;
 
         _mint(to, tokenId);
 
-        certifications[tokenId] = CertificationData({
-            activity_nft_id: activity_nft_id,
-            certification_scheme_id: certification_scheme_id,
-            certification_body_id: certification_body_id,
-            certification_of_compliance_id: certification_of_compliance_id,
-            issue_date: issue_date,
-            expiry_date: expiry_date,
-            certification_status: certification_status,
-            activity_url: activity_url,
-            activity_hash: activity_hash,
-            certification_url: certification_url,
-            certification_hash: certification_hash
-        });
+        certifications[tokenId] = data;
+        tokenIdByComplianceId[data.certificate_of_compliance_id] = tokenId;
 
-        tokenIdByComplianceId[certification_of_compliance_id] = tokenId;
-
-        emit CertificationMinted(tokenId, to, activity_nft_id, certification_of_compliance_id);
+        emit CertificationMinted(tokenId, to, data.activity_nft_id, data.certificate_of_compliance_id);
     }
 
     function getCertification(uint256 tokenId) external view returns (CertificationData memory) {
@@ -107,25 +101,51 @@ contract CertificationNFT is ERC721, Ownable {
         CertificationData memory c = certifications[tokenId];
 
         bytes memory attrs = abi.encodePacked(
-            '{"trait_type":"Activity NFT ID","value":"',          Strings.toString(c.activity_nft_id),     '"},',
-            '{"trait_type":"Certification Scheme ID","value":"',  _esc(c.certification_scheme_id),          '"},',
-            '{"trait_type":"Certification Body ID","value":"',    _esc(c.certification_body_id),            '"},',
-            '{"trait_type":"Compliance ID","value":"',            _esc(c.certification_of_compliance_id),   '"},',
-            '{"trait_type":"Issue Date","value":"',               _esc(c.issue_date),                      '"},',
-            '{"trait_type":"Expiry Date","value":"',              _esc(c.expiry_date),                     '"},',
-            '{"trait_type":"Status","value":"',                   _esc(c.certification_status),            '"},'
+            _attr("Certificate of Compliance ID", c.certificate_of_compliance_id),
+            _attr("Certificate of Compliance URI", c.certificate_of_compliance_uri),
+            _attr("Certificate of Compliance Hash", c.certificate_of_compliance_hash),
+            _attr("Activity ID", c.activity_id),
+            _attr("Activity NFT ID", Strings.toString(c.activity_nft_id)),
+            _attr("Activity URI", c.activity_uri),
+            _attr("Activity Hash", c.activity_hash),
+            _attr("Activity Name", c.activity_name)
         );
         attrs = abi.encodePacked(
             attrs,
-            '{"trait_type":"Activity URL","value":"',             _esc(c.activity_url),                    '"},',
-            '{"trait_type":"Activity Hash","value":"',            _esc(c.activity_hash),                   '"},',
-            '{"trait_type":"Certification URL","value":"',        _esc(c.certification_url),               '"},',
-            '{"trait_type":"Certification Hash","value":"',       _esc(c.certification_hash),              '"}'
+            _attr("Certification Scheme", c.certification_scheme_name),
+            _attr("Certification Scheme URI", c.certification_scheme_uri),
+            _attr("Certification Scheme Hash", c.certification_scheme_hash),
+            _attr("Certification Body", c.certification_body_name),
+            _attr("Certification Body URI", c.certification_body_uri),
+            _attr("Certification Body Hash", c.certification_body_hash)
+        );
+        attrs = abi.encodePacked(
+            attrs,
+            _attr("Country", c.country_id),
+            _attr("Issue Date", c.issue_date),
+            _attr("Expiry Date", c.expiry_date),
+            _attr("Audit Report URI", c.audit_report_uri),
+            _attr("Audit Report Hash", c.audit_report_hash)
+        );
+        // Quantities are only rendered when the certificate carries a value.
+        attrs = abi.encodePacked(
+            attrs,
+            _optAttr("Carbon Removals Under Baseline", c.carbon_removals_under_baseline),
+            _optAttr("Soil Emissions Under Baseline", c.soil_emissions_under_baseline),
+            _optAttr("Permanent Net Carbon Removal Benefit", c.permanent_net_carbon_removal_benefit),
+            _optAttr("Carbon Farming Temporary Net Carbon Removal Benefit", c.carbon_farming_temporary_net_carbon_removal_benefit),
+            _optAttr("Carbon Farming Net Soil Emission Reduction Benefit", c.carbon_farming_net_soil_emission_reduction_benefit),
+            _optAttr("Carbon Storage Temporary Net Carbon Removal Benefit", c.carbon_storage_temporary_net_carbon_removal_benefit)
+        );
+        attrs = abi.encodePacked(
+            attrs,
+            _attr("Unit Types", c.unit_types),
+            '{"trait_type":"Status","value":"', _esc(c.certification_status), '"}'
         );
 
         bytes memory json = abi.encodePacked(
-            '{"name":"Certification ', _esc(c.certification_of_compliance_id), '",',
-            '"description":"OGCR certification of compliance token.",',
+            '{"name":"Certificate of Compliance ', _esc(c.certificate_of_compliance_id), '",',
+            '"description":"OGCR certificate of compliance token.",',
             '"attributes":[', attrs, ']}'
         );
 
@@ -134,7 +154,21 @@ contract CertificationNFT is ERC721, Ownable {
         ));
     }
 
-    /// @dev Minimal JSON-string escaper: escapes `"` and `\` in free-text values.
+    /// @dev One attribute object followed by a comma.
+    function _attr(string memory trait, string memory value) internal pure returns (bytes memory) {
+        return abi.encodePacked('{"trait_type":"', trait, '","value":"', _esc(value), '"},');
+    }
+
+    /// @dev Like _attr, but renders nothing for an empty value.
+    function _optAttr(string memory trait, string memory value) internal pure returns (bytes memory) {
+        if (bytes(value).length == 0) {
+            return "";
+        }
+        return _attr(trait, value);
+    }
+
+    /// @dev Minimal JSON-string escaper: escapes `"` and `\` in free-text values
+    /// and flattens control characters (e.g. newlines) to spaces.
     function _esc(string memory s) internal pure returns (string memory) {
         bytes memory b = bytes(s);
         bytes memory out = new bytes(b.length * 2);
@@ -144,7 +178,7 @@ contract CertificationNFT is ERC721, Ownable {
             if (ch == '"' || ch == "\\") {
                 out[j++] = "\\";
             }
-            out[j++] = ch;
+            out[j++] = ch < 0x20 ? bytes1(" ") : ch;
         }
         assembly ("memory-safe") {
             mstore(out, j)

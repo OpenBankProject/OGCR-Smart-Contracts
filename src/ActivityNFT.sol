@@ -10,8 +10,16 @@ contract ActivityNFT is ERC721, Ownable {
     struct ActivityData {
         string activity_id;
         string operator_id;
+        string operator_name;            // operator.legal_name
         string name;
-        string activity_type;   // 'type' is reserved in Solidity
+        string summary;
+        string website;
+        string activity_type;            // 'type' is reserved in Solidity
+        string unit_types;
+        string city;
+        string country_id;
+        string certification_scheme_id;
+        string[] parcel_ids;             // parcels linked to the activity at mint time
         string start_date;
         string end_date;
         string activity_url;
@@ -21,7 +29,7 @@ contract ActivityNFT is ERC721, Ownable {
     uint256 public nextId = 1;
     address public minter;
 
-    mapping(uint256 => ActivityData) public activities;
+    mapping(uint256 => ActivityData) private activities;
     mapping(string => uint256) public tokenIdByActivityId;
 
     event ActivityMinted(
@@ -50,39 +58,19 @@ contract ActivityNFT is ERC721, Ownable {
         minter = _minter;
     }
 
-    function mint(
-        address to,
-        string calldata activity_id,
-        string calldata operator_id,
-        string calldata name,
-        string calldata activity_type,
-        string calldata start_date,
-        string calldata end_date,
-        string calldata activity_url,
-        string calldata activity_hash
-    ) external onlyMinter returns (uint256 tokenId) {
+    function mint(address to, ActivityData calldata data) external onlyMinter returns (uint256 tokenId) {
         require(to != address(0), "ActivityNFT: zero address");
-        require(bytes(activity_id).length > 0, "ActivityNFT: activity_id required");
-        require(tokenIdByActivityId[activity_id] == 0, "ActivityNFT: already minted");
+        require(bytes(data.activity_id).length > 0, "ActivityNFT: activity_id required");
+        require(tokenIdByActivityId[data.activity_id] == 0, "ActivityNFT: already minted");
 
         tokenId = nextId++;
 
         _mint(to, tokenId);
 
-        activities[tokenId] = ActivityData({
-            activity_id: activity_id,
-            operator_id: operator_id,
-            name: name,
-            activity_type: activity_type,
-            start_date: start_date,
-            end_date: end_date,
-            activity_url: activity_url,
-            activity_hash: activity_hash
-        });
+        activities[tokenId] = data;
+        tokenIdByActivityId[data.activity_id] = tokenId;
 
-        tokenIdByActivityId[activity_id] = tokenId;
-
-        emit ActivityMinted(tokenId, to, activity_id, operator_id);
+        emit ActivityMinted(tokenId, to, data.activity_id, data.operator_id);
     }
 
     function getActivity(uint256 tokenId) external view returns (ActivityData memory) {
@@ -99,19 +87,35 @@ contract ActivityNFT is ERC721, Ownable {
             ? a.name
             : string(abi.encodePacked("Activity ", a.activity_id));
 
+        bytes memory attrs = abi.encodePacked(
+            _attr("Activity ID", a.activity_id), ",",
+            _attr("Operator ID", a.operator_id), ",",
+            _attr("Operator Name", a.operator_name), ",",
+            _attr("Name", a.name), ",",
+            _attr("Summary", a.summary), ",",
+            _attr("Website", a.website), ","
+        );
+        attrs = abi.encodePacked(
+            attrs,
+            _attr("Type", a.activity_type), ",",
+            _attr("Unit Types", a.unit_types), ",",
+            _attr("City", a.city), ",",
+            _attr("Country", a.country_id), ",",
+            _attr("Certification Scheme ID", a.certification_scheme_id), ",",
+            _attr("Parcels", _join(a.parcel_ids)), ","
+        );
+        attrs = abi.encodePacked(
+            attrs,
+            _attr("Start Date", a.start_date), ",",
+            _attr("End Date", a.end_date), ",",
+            _attr("Activity URL", a.activity_url), ",",
+            _attr("Activity Hash", a.activity_hash)
+        );
+
         bytes memory json = abi.encodePacked(
             '{"name":"', _esc(name), '",',
             '"description":"OGCR activity token.",',
-            '"attributes":[',
-                '{"trait_type":"Activity ID","value":"',   _esc(a.activity_id),    '"},',
-                '{"trait_type":"Operator ID","value":"',   _esc(a.operator_id),    '"},',
-                '{"trait_type":"Name","value":"',          _esc(a.name),           '"},',
-                '{"trait_type":"Type","value":"',          _esc(a.activity_type),  '"},',
-                '{"trait_type":"Start Date","value":"',    _esc(a.start_date),     '"},',
-                '{"trait_type":"End Date","value":"',      _esc(a.end_date),       '"},',
-                '{"trait_type":"Activity URL","value":"',  _esc(a.activity_url),   '"},',
-                '{"trait_type":"Activity Hash","value":"', _esc(a.activity_hash),  '"}',
-            ']}'
+            '"attributes":[', attrs, ']}'
         );
 
         return string(abi.encodePacked(
@@ -119,7 +123,18 @@ contract ActivityNFT is ERC721, Ownable {
         ));
     }
 
-    /// @dev Minimal JSON-string escaper: escapes `"` and `\` in free-text values.
+    function _attr(string memory trait, string memory value) internal pure returns (bytes memory) {
+        return abi.encodePacked('{"trait_type":"', trait, '","value":"', _esc(value), '"}');
+    }
+
+    function _join(string[] memory items) internal pure returns (string memory out) {
+        for (uint256 i = 0; i < items.length; i++) {
+            out = i == 0 ? items[i] : string(abi.encodePacked(out, ",", items[i]));
+        }
+    }
+
+    /// @dev Minimal JSON-string escaper: escapes `"` and `\` in free-text values
+    /// and flattens control characters (e.g. newlines) to spaces.
     function _esc(string memory s) internal pure returns (string memory) {
         bytes memory b = bytes(s);
         bytes memory out = new bytes(b.length * 2);
@@ -129,7 +144,7 @@ contract ActivityNFT is ERC721, Ownable {
             if (c == '"' || c == "\\") {
                 out[j++] = "\\";
             }
-            out[j++] = c;
+            out[j++] = c < 0x20 ? bytes1(" ") : c;
         }
         assembly ("memory-safe") {
             mstore(out, j)

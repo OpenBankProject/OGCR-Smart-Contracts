@@ -5,3 +5,6 @@
 .vscode/
 
 broadcast/
+
+# local fixture addresses (script/local/DeployLocalStack.s.sol)
+deployments/local-anvil.env
