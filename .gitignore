@@ -5,3 +5,10 @@
 .vscode/
 
 broadcast/
+
+# Local dev fixture output (script/local/DeployLocalStack.s.sol)
+deployments/local-anvil.env
+
+# Foundry build output
+out/
+cache/
